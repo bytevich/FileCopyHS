@@ -42,6 +42,7 @@ internal class Program
                 return;
             }
 
+            var success = true;
             await using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read))
             {
                 if (sourceStream.Length == 0)
@@ -53,7 +54,8 @@ internal class Program
                 var buffer = new byte[1024 * 1024];
                 var chunkCounter = 0;
                 long totalBytesRead = 0;
-                byte[] destinationFileHash;
+                byte[] destinationFileHash = [];
+
                 await using (var destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.ReadWrite))
                 {
                     using (var md5 = MD5.Create())
@@ -82,25 +84,59 @@ internal class Program
 
                             if (!destinationChunkHash.SequenceEqual(sourceChunkHash))
                             {
-                                // TODO: re-submit the whole file, for now just break the loop and display the message
-                                Console.WriteLine($"Chunk number {chunkCounter} failed hash verification. Re-submitting the whole file.");
+                                Console.WriteLine($"Chunk number {chunkCounter} failed hash verification. Re-submitting the chunk.");
+
+                                var maxRetryAttempts = 3;
+                                for (var i = 0; i < maxRetryAttempts; i++)
+                                {
+                                    destinationStream.Seek(chunkPosition, SeekOrigin.Begin);
+                                    await destinationStream.WriteAsync(buffer[..currentBytesRead]);
+                                    destinationStream.Seek(chunkPosition, SeekOrigin.Begin);
+                                    await destinationStream.ReadAsync(buffer[..currentBytesRead]);
+                                    destinationChunkHash = md5.ComputeHash(buffer[..currentBytesRead]);
+
+                                    if (destinationChunkHash.SequenceEqual(sourceChunkHash))
+                                    {
+                                        break;
+                                    }
+                                }
+
+                                if (!destinationChunkHash.SequenceEqual(sourceChunkHash))
+                                {
+                                    success = false;
+                                    Console.WriteLine($"Chunk number {chunkCounter} failed hash verification after {maxRetryAttempts} attempts. Aborting the process and deleting the file.");
+                                    break;
+                                }
                             }
 
+                            /* this is not needed because the stream will be at the end of the written chunk because we do a read after the write
+                             was put as a test to ensure whether the stream position is correct or no. the hashes were the same even without this line
+                             it is not an expensive operations so it is good to have this as a safe guard */
                             destinationStream.Seek(0, SeekOrigin.End);
                         }
                     }
 
-                    destinationStream.Seek(0, SeekOrigin.Begin);
-                    destinationFileHash = await SHA256.HashDataAsync(destinationStream);
+                    if (success)
+                    {
+                        destinationStream.Seek(0, SeekOrigin.Begin);
+                        // TODO: SHA256.HashDataAsync takes too long
+                        destinationFileHash = await SHA256.HashDataAsync(destinationStream);
+                    }
                 }
 
-                sourceStream.Seek(0, SeekOrigin.Begin);
-                var sourceFileHash = await SHA256.HashDataAsync(sourceStream);
-                var filesHashCheck = sourceFileHash.SequenceEqual(destinationFileHash) ? string.Empty : " not";
+                if (success)
+                {
+                    sourceStream.Seek(0, SeekOrigin.Begin);
+                    var sourceFileHash = await SHA256.HashDataAsync(sourceStream);
+                    var filesHashCheck = sourceFileHash.SequenceEqual(destinationFileHash) ? string.Empty : " not";
 
-                Console.WriteLine($"Source file and destination file are{filesHashCheck} the same. " +
-                                  $"Source file hash: {BitConverter.ToString(sourceFileHash)}, Destination file hash: {BitConverter.ToString(destinationFileHash)}");
+                    Console.WriteLine($"Source file and destination file are{filesHashCheck} the same. " +
+                                      $"Source file hash: {BitConverter.ToString(sourceFileHash)}, Destination file hash: {BitConverter.ToString(destinationFileHash)}");
+                }
             }
+
+            if (!success)
+                File.Delete(destinationPath);
         }
         catch (Exception e)
         {
