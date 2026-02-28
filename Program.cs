@@ -9,7 +9,6 @@ internal class Program
         Console.Write("Enter source file path: ");
 
         var sourcePath = Console.ReadLine();
-        //TODO: check the methods
         if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
         {
             Console.WriteLine("Invalid source path.");
@@ -29,7 +28,7 @@ internal class Program
         {
             var fileName = Path.GetFileName(sourcePath);
 
-            // validating if filename is valid only with an empty or null check, no check for special characters for different OS
+            // NOTE: validating if filename is valid only with an empty or null check, no check for special characters for different OS
             if (string.IsNullOrEmpty(fileName))
             {
                 Console.WriteLine("An error occurred while obtaining the file name.");
@@ -43,35 +42,65 @@ internal class Program
                 return;
             }
 
-            var file = new FileStream(sourcePath, FileMode.Open, FileAccess.Read);
-            if (file.Length == 0)
+            await using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read))
             {
-                Console.WriteLine("The source file is empty.");
-                return;
+                if (sourceStream.Length == 0)
+                {
+                    Console.WriteLine("The source file is empty.");
+                    return;
+                }
+
+                var buffer = new byte[1024 * 1024];
+                var chunkCounter = 0;
+                long totalBytesRead = 0;
+                byte[] destinationFileHash;
+                await using (var destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.ReadWrite))
+                {
+                    using (var md5 = MD5.Create())
+                    {
+                        int currentBytesRead;
+                        while ((currentBytesRead = await sourceStream.ReadAsync(buffer)) > 0)
+                        {
+                            chunkCounter++;
+                            totalBytesRead += currentBytesRead;
+                            var chunkPosition = totalBytesRead - currentBytesRead;
+
+                            var sourceChunkHash = md5.ComputeHash(buffer[..currentBytesRead]);
+                            await destinationStream.WriteAsync(buffer[..currentBytesRead]);
+
+                            Console.WriteLine($"Chunk number: {chunkCounter}, position = {chunkPosition}, hash = {BitConverter.ToString(sourceChunkHash)}");
+
+                            destinationStream.Seek(chunkPosition, SeekOrigin.Begin);
+
+                            /* warning: Avoid inexact read with 'System.IO.FileStream.ReadAsync(System.Memory<byte>, System.Threading.CancellationToken)'
+                                about not knowing if the stream will return the requested number of bytes in one read 
+                                this won't be a problem for local file streams cause it reads from disk
+                                for a real case scenario, there should be a mechanism for this */
+
+                            await destinationStream.ReadAsync(buffer[..currentBytesRead]);
+                            var destinationChunkHash = md5.ComputeHash(buffer[..currentBytesRead]);
+
+                            if (!destinationChunkHash.SequenceEqual(sourceChunkHash))
+                            {
+                                // TODO: re-submit the whole file, for now just break the loop and display the message
+                                Console.WriteLine($"Chunk number {chunkCounter} failed hash verification. Re-submitting the whole file.");
+                            }
+
+                            destinationStream.Seek(0, SeekOrigin.End);
+                        }
+                    }
+
+                    destinationStream.Seek(0, SeekOrigin.Begin);
+                    destinationFileHash = await SHA256.HashDataAsync(destinationStream);
+                }
+
+                sourceStream.Seek(0, SeekOrigin.Begin);
+                var sourceFileHash = await SHA256.HashDataAsync(sourceStream);
+                var filesHashCheck = sourceFileHash.SequenceEqual(destinationFileHash) ? string.Empty : " not";
+
+                Console.WriteLine($"Source file and destination file are{filesHashCheck} the same. " +
+                                  $"Source file hash: {BitConverter.ToString(sourceFileHash)}, Destination file hash: {BitConverter.ToString(destinationFileHash)}");
             }
-
-            // TODO: last chunk may be smaller than the buffer size, handle that case
-
-            var buffer = new byte[1024 * 1024];
-            var chunkCounter = 0;
-            var totalBytesRead = 0;
-            int currentBytesRead;
-            await using var destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write);
-            using var md5 = MD5.Create();
-
-            while ((currentBytesRead = await file.ReadAsync(buffer)) > 0)
-            {
-                chunkCounter++;
-                totalBytesRead += currentBytesRead;
-                var hashedChunk = md5.ComputeHash(buffer);
-
-                await destinationStream.WriteAsync(buffer);
-                Console.WriteLine($"Chunk number: {chunkCounter}, position = {totalBytesRead - currentBytesRead}, hash = {BitConverter.ToString(hashedChunk)}");
-
-                // TODO: verify each chunk at the destination by comparing the hash of the chunk with the hash sent from the source, if one of the chunks does not match, re-submit the whole file
-            }
-
-            // TODO: hash the whole file and then compare the hash of the whole file in destination and display both
         }
         catch (Exception e)
         {
