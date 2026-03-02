@@ -9,7 +9,7 @@ internal class Program
         Console.Write("Enter source file path: ");
 
         var sourcePath = Console.ReadLine();
-        if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+        if (!File.Exists(sourcePath))
         {
             Console.WriteLine("Invalid source path or file does not exist.");
             return;
@@ -66,7 +66,6 @@ internal class Program
                 chunkCounter++;
                 totalBytesRead += currentBytesRead;
                 var chunkPosition = totalBytesRead - currentBytesRead;
-
                 var sourceChunkHash = md5.ComputeHash(buffer[..currentBytesRead]);
                 sourceHashInstance.AppendData(buffer[..currentBytesRead]);
                 await destinationStream.WriteAsync(buffer[..currentBytesRead]);
@@ -86,11 +85,12 @@ internal class Program
                 if (!destinationChunkHash.SequenceEqual(sourceChunkHash))
                 {
                     Console.WriteLine($"Chunk number {chunkCounter} failed hash verification. Re-submitting the chunk.");
+                    var sourceChunk = buffer[..currentBytesRead].ToArray();
 
                     for (var i = 0; i < maxRetryAttempts; i++)
                     {
                         destinationStream.Seek(chunkPosition, SeekOrigin.Begin);
-                        await destinationStream.WriteAsync(buffer[..currentBytesRead]);
+                        await destinationStream.WriteAsync(sourceChunk);
                         destinationStream.Seek(chunkPosition, SeekOrigin.Begin);
                         await destinationStream.ReadAsync(buffer[..currentBytesRead]);
                         destinationChunkHash = md5.ComputeHash(buffer[..currentBytesRead]);
