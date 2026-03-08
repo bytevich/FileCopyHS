@@ -1,7 +1,9 @@
-﻿namespace FileCopyHS.Interfaces
+﻿using FileCopyHS.Models;
+
+namespace FileCopyHS.Interfaces
 {
     public interface IFileReaderService
     {
-        Task ReadFile(string sourceFile, string destinationFile);
+        Task<Chunk> ReadFile(string sourceFile);
     }
 }

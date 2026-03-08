@@ -37,13 +37,13 @@ namespace FileCopyHS.Services
                 }
 
                 var fileName = Path.GetFileName(sourceFile);
-                var extension = Path.GetExtension(fileName);
-
                 if (string.IsNullOrEmpty(fileName))
                 {
                     Console.WriteLine("An error occurred while obtaining the file name.");
                     Environment.Exit(1);
                 }
+
+                var extension = Path.GetExtension(fileName);
 
                 Console.Write("Keep original filename? (y/n)");
                 var keepFilename = Console.ReadLine();
