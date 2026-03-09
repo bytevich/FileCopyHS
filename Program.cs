@@ -15,6 +15,7 @@ internal class Program
         builder.Services.AddTransient<IFileWriterService, FileWriterService>();
         builder.Services.AddTransient<IHashService, HashService>();
         builder.Services.AddTransient<IUserInputService, UserInputService>();
+        builder.Services.AddTransient<IFileProcessorService, FileProcessorService>();
 
         using var host = builder.Build();
 

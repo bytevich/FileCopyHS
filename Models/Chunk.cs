@@ -6,5 +6,6 @@
         public long Position { get; set; }
         public byte[]? Data { get; set; }
         public byte[]? HashedData { get; set; }
+        public int Size { get; set; }
     }
 }

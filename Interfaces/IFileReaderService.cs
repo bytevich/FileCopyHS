@@ -1,9 +1,11 @@
-﻿using FileCopyHS.Models;
+﻿using System.Security.Cryptography;
+using System.Threading.Channels;
+using FileCopyHS.Models;
 
 namespace FileCopyHS.Interfaces
 {
     public interface IFileReaderService
     {
-        Task<Chunk> ReadFile(string sourceFile);
+        Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance);
     }
 }
