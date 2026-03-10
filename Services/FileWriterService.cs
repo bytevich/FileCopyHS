@@ -2,6 +2,7 @@
 using System.Threading.Channels;
 using FileCopyHS.Interfaces;
 using FileCopyHS.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 
 namespace FileCopyHS.Services
@@ -9,60 +10,50 @@ namespace FileCopyHS.Services
     public class FileWriterService : IFileWriterService
     {
         private readonly IHashService _hashService;
+        private readonly ILogger<FileWriterService> _logger;
 
-        public FileWriterService(IHashService hashService)
+        public FileWriterService(IHashService hashService, ILogger<FileWriterService> logger)
         {
-            _hashService = hashService; 
+            _hashService = hashService;
+            _logger = logger;
         }
 
         public async Task WriteFile(string destinationFile, ChannelReader<Chunk> reader)
         {
-            try
+            using var destinationFileHandle = File.OpenHandle(
+                destinationFile,
+                FileMode.Create,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                FileOptions.Asynchronous
+            );
+
+            var tasks = new ConcurrentBag<Task>();
+            var semaphore = new SemaphoreSlim(8);
+            await foreach (var chunk in reader.ReadAllAsync())
             {
-                using var destinationFileHandle = File.OpenHandle(
-                    destinationFile,
-                    FileMode.Create,
-                    FileAccess.ReadWrite,
-                    FileShare.None,
-                    FileOptions.Asynchronous
-                );
+                await semaphore.WaitAsync();
 
-                var tasks = new ConcurrentBag<Task>();
-                var semaphore = new SemaphoreSlim(8);
-                await foreach (var chunk in reader.ReadAllAsync())
+                if (chunk.Data == null || chunk.HashedData == null)
                 {
-                    await semaphore.WaitAsync();
-
-                    if (chunk.Data == null || chunk.HashedData == null)
-                    {
-                        semaphore.Release();
-                        Console.WriteLine("Chunk data is null.");
-                        Environment.Exit(1);
-                    }
-                    Task task;
-
-                    try
-                    {
-                        task = WriteChunk(destinationFileHandle, chunk);
-                    }
-                    finally 
-                    {
-                        semaphore.Release();
-                    }
-
-                    tasks.Add(task);
+                    semaphore.Release();
+                    throw new InvalidDataException("Chunk data is null.");
                 }
 
-                await Task.WhenAll(tasks);
+                Task task;
+                try
+                {
+                    task = WriteChunk(destinationFileHandle, chunk);
+                }
+                finally 
+                {
+                    semaphore.Release();
+                }
+
+                tasks.Add(task);
             }
 
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                // TODO: delete the file
-                // TODO: avoid environment exit
-                Environment.Exit(1);
-            }
+            await Task.WhenAll(tasks);
         }
 
         private async Task WriteChunk(SafeFileHandle destinationFileHandle, Chunk chunk)
@@ -76,7 +67,8 @@ namespace FileCopyHS.Services
             var destinationHash = _hashService.ComputeMd5Hash(buffer);
             if (!destinationHash.SequenceEqual(chunk.HashedData))
             {
-                Console.WriteLine($"Chunk number {chunk.Number} failed hash verification. Re-submitting the chunk.");
+                _logger.LogWarning("Chunk number {ChunkNumber} failed hash verification. Re-submitting the chunk.", 
+                    chunk.Number);
                 await VerifyChunk(destinationFileHandle, chunk, buffer);
             }
         }
@@ -98,7 +90,7 @@ namespace FileCopyHS.Services
 
             if (!destinationRetryHash.SequenceEqual(chunk.HashedData))
             {
-                throw new Exception($"Chunk number {chunk.Number} failed hash verification after {maxRetryAttempts} attempts. Aborting the process and deleting the file.");
+                throw new IOException($"Chunk number {chunk.Number} failed hash verification after {maxRetryAttempts} attempts. Aborting the process and deleting the file.");
             }
         }
     }

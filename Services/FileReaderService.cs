@@ -2,33 +2,29 @@
 using FileCopyHS.Models;
 using System.Security.Cryptography;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 
 namespace FileCopyHS.Services
 {
     public class FileReaderService : IFileReaderService
     {
         private readonly IHashService _hashService;
+        private readonly ILogger<FileReaderService> _logger;
 
-        public FileReaderService(IHashService hashService)
+        public FileReaderService(IHashService hashService, ILogger<FileReaderService> logger)
         {
             _hashService = hashService;
+            _logger = logger;
         }
 
         public async Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance)
         {
             try
             {
-                if (string.IsNullOrEmpty(sourceFile))
-                {
-                    Console.WriteLine("Source file path is null or empty while attempting to read the file.");
-                    Environment.Exit(1);
-                }
-
                 await using var sourceStream = new FileStream(sourceFile, FileMode.Open, FileAccess.Read);
                 if (sourceStream.Length == 0)
                 {
-                    Console.WriteLine("The source file is empty.");
-                    Environment.Exit(1);
+                    throw new InvalidDataException("The source file is empty.");
                 }
 
                 var buffer = new byte[1024 * 1024];
@@ -53,17 +49,15 @@ namespace FileCopyHS.Services
 
                     await writer.WriteAsync(chunk);
                 }
-            }
 
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                Environment.Exit(1);
-            }
-
-            finally
-            {
                 writer.Complete();
+            }
+
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while reading the source file: {SourceFile}.", sourceFile);
+                writer.Complete(ex);
+                throw;
             }
         }
     }

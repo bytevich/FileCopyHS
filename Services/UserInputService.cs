@@ -1,73 +1,66 @@
 ﻿using FileCopyHS.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace FileCopyHS.Services
 {
     public class UserInputService : IUserInputService
     {
+        private readonly ILogger<UserInputService> _logger;
+
+        public UserInputService(ILogger<UserInputService> logger)
+        {
+            _logger = logger;
+        }
+
         public Tuple<string, string> ValidateUserInput()
         {
-            var sourceFile = string.Empty;
-            var destinationFile = string.Empty;
+            string destinationFile;
+            Console.Write("Enter source file path: ");
 
-            try
+            var sourceFile = Console.ReadLine();
+            if (!File.Exists(sourceFile))
             {
-                Console.Write("Enter source file path: ");
-
-                sourceFile = Console.ReadLine();
-                if (!File.Exists(sourceFile))
-                {
-                    Console.WriteLine("Invalid source path or file does not exist.");
-                    Environment.Exit(1);
-                }
-
-                Console.Write("Enter destination path: ");
-
-                var destinationPath = Console.ReadLine();
-                if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
-                {
-                    Console.WriteLine("Invalid destination path or directory does not exist in the destination path.");
-                    Environment.Exit(1);
-                }
-
-                if (!string.IsNullOrEmpty(sourceFile) && !string.IsNullOrEmpty(destinationPath) &&
-                    Path.GetFullPath(sourceFile).Equals(Path.GetFullPath(destinationPath), StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine("Source and destination paths cannot be the same.");
-                    Environment.Exit(1);
-                }
-
-                var fileName = Path.GetFileName(sourceFile);
-                if (string.IsNullOrEmpty(fileName))
-                {
-                    Console.WriteLine("An error occurred while obtaining the file name.");
-                    Environment.Exit(1);
-                }
-
-                var extension = Path.GetExtension(fileName);
-
-                Console.Write("Keep original filename? (y/n)");
-                var keepFilename = Console.ReadLine();
-
-                switch (keepFilename)
-                {
-                    case "y": destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(fileName));
-                        break;
-                    case "n": Console.WriteLine("Enter new filename: ");
-                        var newFileName = Console.ReadLine();
-                        destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(newFileName));
-                        break;
-                    default: destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(fileName));
-                        Console.WriteLine("Invalid input, keeping original filename.");
-                        break;
-                }
+                throw new FileNotFoundException("Invalid source path or file does not exist.");
             }
 
-            catch (Exception e)
+            Console.Write("Enter destination path: ");
+
+            var destinationPath = Console.ReadLine();
+            if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
-                Console.WriteLine(e);
-                Environment.Exit(1);
+                throw new DirectoryNotFoundException("Invalid destination path or directory does not exist in the destination path.");
             }
 
+            if (!string.IsNullOrEmpty(sourceFile) && !string.IsNullOrEmpty(destinationPath) &&
+                Path.GetFullPath(sourceFile).Equals(Path.GetFullPath(destinationPath), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Source and destination paths cannot be the same.");
+            }
+
+            var fileName = Path.GetFileName(sourceFile);
+            if (string.IsNullOrEmpty(fileName))
+            {
+                throw new InvalidOperationException("An error occurred while obtaining the file name.");
+            }
+
+            var extension = Path.GetExtension(fileName);
+
+            Console.Write("Keep original filename? (y/n)");
+            var keepFilename = Console.ReadLine();
+
+            switch (keepFilename)
+            {
+                case "y": destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(fileName));
+                    break;
+                case "n": Console.WriteLine("Enter new filename: ");
+                    var newFileName = Console.ReadLine();
+                    destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(newFileName));
+                    break;
+                default: destinationFile = FileNameCheck(destinationPath, extension, Path.GetFileNameWithoutExtension(fileName));
+                    _logger.LogWarning("Invalid input, keeping original filename.");
+                    break;
+            }
+            
             return new Tuple<string, string>(sourceFile, destinationFile);
         }
 
@@ -75,8 +68,7 @@ namespace FileCopyHS.Services
         {
             if (string.IsNullOrEmpty(fileName))
             {
-                Console.WriteLine("Filename cannot be empty.");
-                Environment.Exit(1);
+                throw new ArgumentException("Filename cannot be empty.");
             }
 
             var counter = 0;

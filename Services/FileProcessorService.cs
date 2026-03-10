@@ -2,6 +2,7 @@
 using System.Threading.Channels;
 using FileCopyHS.Interfaces;
 using FileCopyHS.Models;
+using Microsoft.Extensions.Logging;
 
 namespace FileCopyHS.Services
 {
@@ -10,17 +11,19 @@ namespace FileCopyHS.Services
         private readonly IFileReaderService _fileReaderService;
         private readonly IFileWriterService _fileWriterService;
         private readonly IHashService _hashService;
+        private readonly ILogger<FileProcessorService> _logger;
 
-        public FileProcessorService(IFileReaderService fileReaderService, IFileWriterService fileWriterService, IHashService hashService)
+        public FileProcessorService(IFileReaderService fileReaderService, IFileWriterService fileWriterService, IHashService hashService, ILogger<FileProcessorService> logger)
         {
             _fileReaderService = fileReaderService;
             _fileWriterService = fileWriterService;
             _hashService = hashService;
+            _logger = logger;
         }
 
         public async Task CopyFile(string sourceFile, string destinationFile)
         {
-            var channel = Channel.CreateBounded<Chunk>(capacity: 5);
+            var channel = Channel.CreateBounded<Chunk>(capacity: 8);
             using var sourceHashInstance = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
             var producer = _fileReaderService.ReadFile(sourceFile, channel.Writer, sourceHashInstance);
@@ -29,19 +32,10 @@ namespace FileCopyHS.Services
             await Task.WhenAll(producer, consumer);
 
             var result = await _hashService.ComputeAndCompare(sourceHashInstance, destinationFile);
+            var negation = !result.Item1 ? " not" : string.Empty;
 
-            if (!string.IsNullOrEmpty(result.Item2) && !string.IsNullOrEmpty(result.Item3))
-            {
-                var negation = !result.Item1 ? " not" : string.Empty;
-
-                Console.WriteLine($"Source file and destination file are{negation} the same. " +
-                                  $"Source file hash: {result.Item2}, Destination file hash: {result.Item3}");
-            }
-
-            else
-            {
-                Console.WriteLine("An error occured while checking the hashed values. Hash returned an empty string.");
-            }
+            _logger.LogInformation("Source file and destination file are{Negation} the same. Source file hash: {ResultItem2}, Destination file hash: {ResultItem3}", 
+                negation, result.Item2, result.Item3);
         }
     }
 }
