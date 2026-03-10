@@ -20,6 +20,8 @@ internal class Program
         using var host = builder.Build();
 
         var userInputService = host.Services.GetRequiredService<IUserInputService>();
-        userInputService.ValidateUserInput();
+        var paths = userInputService.ValidateUserInput();
+        var fileProcessorService = host.Services.GetRequiredService<IFileProcessorService>();
+        await fileProcessorService.CopyFile(paths.Item1, paths.Item2);
     }
 }

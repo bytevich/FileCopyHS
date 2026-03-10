@@ -28,16 +28,29 @@ namespace FileCopyHS.Services
                 );
 
                 var tasks = new ConcurrentBag<Task>();
-
+                var semaphore = new SemaphoreSlim(8);
                 await foreach (var chunk in reader.ReadAllAsync())
                 {
-                    if (chunk.Data == null)
+                    await semaphore.WaitAsync();
+
+                    if (chunk.Data == null || chunk.HashedData == null)
                     {
+                        semaphore.Release();
                         Console.WriteLine("Chunk data is null.");
                         Environment.Exit(1);
                     }
+                    Task task;
 
-                    tasks.Add(WriteChunk(destinationFileHandle, chunk));
+                    try
+                    {
+                        task = WriteChunk(destinationFileHandle, chunk);
+                    }
+                    finally 
+                    {
+                        semaphore.Release();
+                    }
+
+                    tasks.Add(task);
                 }
 
                 await Task.WhenAll(tasks);
@@ -55,6 +68,8 @@ namespace FileCopyHS.Services
         private async Task WriteChunk(SafeFileHandle destinationFileHandle, Chunk chunk)
         {
             await RandomAccess.WriteAsync(destinationFileHandle, chunk.Data, chunk.Position);
+            Console.WriteLine($"Chunk number: {chunk.Number}, position = {chunk.Position}, hash = {BitConverter.ToString(chunk.HashedData!)}");
+
             var buffer = new byte[chunk.Size];
             await RandomAccess.ReadAsync(destinationFileHandle, buffer, chunk.Position);
 
@@ -69,7 +84,8 @@ namespace FileCopyHS.Services
         private async Task VerifyChunk(SafeFileHandle destinationFileHandle, Chunk chunk, byte[] buffer)
         {
             var maxRetryAttempts = 3;
-            var destinationRetryHash = Array.Empty<byte>();
+            byte[]? destinationRetryHash = null;
+
             for (var i = 0; i < maxRetryAttempts; i++)
             {
                 await RandomAccess.WriteAsync(destinationFileHandle, chunk.Data, chunk.Position);
