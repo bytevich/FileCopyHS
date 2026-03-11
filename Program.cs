@@ -19,7 +19,14 @@ internal class Program
         builder.Services.AddTransient<AppRunner>();
 
         using var host = builder.Build();
+        var cts = new CancellationTokenSource();
 
-        await host.Services.GetRequiredService<AppRunner>().Run();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+
+        await host.Services.GetRequiredService<AppRunner>().Run(cts.Token);
     }
 }

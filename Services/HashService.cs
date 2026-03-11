@@ -10,11 +10,11 @@ namespace FileCopyHS.Services
             return MD5.HashData(data);
         }
 
-        public async Task<Tuple<bool, string, string>> ComputeAndCompare(IncrementalHash sourceHashInstance, string destinationFile)
+        public async Task<Tuple<bool, string, string>> ComputeAndCompare(IncrementalHash sourceHashInstance, string destinationFile, CancellationToken ct)
         {
             var sourceFileHash = sourceHashInstance.GetHashAndReset();
             await using var destStream = File.OpenRead(destinationFile);
-            var destinationFileHash = await SHA256.HashDataAsync(destStream);
+            var destinationFileHash = await SHA256.HashDataAsync(destStream, ct);
 
             var areEqual = sourceFileHash.SequenceEqual(destinationFileHash);
 

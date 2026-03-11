@@ -5,6 +5,6 @@ namespace FileCopyHS.Interfaces
 {
     public interface IFileWriterService
     {
-        Task WriteFile(string destinationFile, ChannelReader<Chunk> reader);
+        Task WriteFile(string destinationFile, ChannelReader<Chunk> reader, CancellationToken ct);
     }
 }

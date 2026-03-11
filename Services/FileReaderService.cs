@@ -17,7 +17,7 @@ namespace FileCopyHS.Services
             _logger = logger;
         }
 
-        public async Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance)
+        public async Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance, CancellationToken ct)
         {
             try
             {
@@ -32,7 +32,7 @@ namespace FileCopyHS.Services
                 long totalBytesRead = 0;
                 int currentBytesRead;
 
-                while ((currentBytesRead = await sourceStream.ReadAsync(buffer)) > 0)
+                while ((currentBytesRead = await sourceStream.ReadAsync(buffer, ct)) > 0)
                 {
                     totalBytesRead += currentBytesRead;
                     var chunkData = buffer[..currentBytesRead].ToArray();
@@ -47,7 +47,7 @@ namespace FileCopyHS.Services
                         Size = currentBytesRead
                     };
 
-                    await writer.WriteAsync(chunk);
+                    await writer.WriteAsync(chunk, ct);
                 }
 
                 writer.Complete();
