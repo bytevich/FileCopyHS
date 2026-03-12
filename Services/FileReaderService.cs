@@ -1,8 +1,9 @@
 ﻿using FileCopyHS.Interfaces;
 using FileCopyHS.Models;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
 
 namespace FileCopyHS.Services
 {
@@ -10,11 +11,13 @@ namespace FileCopyHS.Services
     {
         private readonly IHashService _hashService;
         private readonly ILogger<FileReaderService> _logger;
+        private readonly IConfiguration _configuration;
 
-        public FileReaderService(IHashService hashService, ILogger<FileReaderService> logger)
+        public FileReaderService(IHashService hashService, ILogger<FileReaderService> logger, IConfiguration configuration)
         {
             _hashService = hashService;
             _logger = logger;
+            _configuration = configuration;
         }
 
         public async Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance, CancellationToken ct)
@@ -27,7 +30,7 @@ namespace FileCopyHS.Services
                     throw new InvalidDataException("The source file is empty.");
                 }
 
-                var buffer = new byte[1024 * 1024];
+                var buffer = new byte[_configuration.GetValue<int>("BufferSize")];
                 var chunkCounter = 0;
                 long totalBytesRead = 0;
                 int currentBytesRead;

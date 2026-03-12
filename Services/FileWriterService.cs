@@ -3,7 +3,6 @@ using FileCopyHS.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
-using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 namespace FileCopyHS.Services
@@ -31,29 +30,28 @@ namespace FileCopyHS.Services
                 FileOptions.Asynchronous
             );
 
-            var tasks = new ConcurrentBag<Task>();
+            var tasks = new List<Task>();
             var semaphore = new SemaphoreSlim(_configuration.GetValue<int>("SemaphoreInitialCount"));
             await foreach (var chunk in reader.ReadAllAsync(ct))
             {
-                await semaphore.WaitAsync(ct);
-
                 if (chunk.Data == null || chunk.HashedData == null)
                 {
-                    semaphore.Release();
                     throw new InvalidDataException("Chunk data is null.");
                 }
 
-                Task task;
-                try
-                {
-                    task = WriteChunk(destinationFileHandle, chunk, ct);
-                }
-                finally 
-                {
-                    semaphore.Release();
-                }
+                await semaphore.WaitAsync(ct);
 
-                tasks.Add(task);
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        await WriteChunk(destinationFileHandle, chunk, ct);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }, ct));
             }
 
             await Task.WhenAll(tasks);

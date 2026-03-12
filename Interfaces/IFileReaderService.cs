@@ -6,6 +6,6 @@ namespace FileCopyHS.Interfaces
 {
     public interface IFileReaderService
     {
-        Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance, CancellationToken cts);
+        Task ReadFile(string sourceFile, ChannelWriter<Chunk> writer, IncrementalHash sourceHashInstance, CancellationToken ct);
     }
 }
